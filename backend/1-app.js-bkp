@@ -1,0 +1,140 @@
+// server/app.js
+require('dotenv').config();
+const express = require('express');
+const bodyParser = require('body-parser');
+const session = require('express-session');
+const bcrypt = require('bcrypt');
+const { Pool } = require('pg');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY || 'sk_test_...');
+
+const app = express();
+app.use(bodyParser.json());
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'devsecret',
+  resave: false,
+  saveUninitialized: false
+}));
+
+// Postgres pool
+const pool = new Pool({
+  user: process.env.POSTGRES_USER,
+  host: process.env.DB_HOST || 'db', // use 'db' if backend runs in Docker
+  database: process.env.POSTGRES_DB,
+  password: process.env.POSTGRES_PASSWORD,
+  port: 5433,
+});
+
+// Auth middleware
+function ensureAuth(req,res,next){
+  if(req.session && req.session.userId) return next();
+  res.json({ ok:false, error:'unauthenticated' });
+}
+
+// ------------------ Routes ------------------
+
+// Register
+app.post('/api/register', async (req,res)=>{
+  const { email, password, name } = req.body;
+  if(!email || !password) return res.json({ ok:false, error:'missing' });
+  try {
+    const hash = await bcrypt.hash(password, 10);
+    const result = await pool.query(
+      'INSERT INTO users (email, name, password_hash) VALUES ($1,$2,$3) RETURNING id,email,name',
+      [email, name, hash]
+    );
+    const user = result.rows[0];
+    req.session.userId = user.id;
+    res.json({ ok:true, user: { id:user.id, email:user.email, name:user.name, paymentMethods: [] } });
+  } catch(err) {
+    res.json({ ok:false, error: err.code==='23505' ? 'Email already exists' : err.message });
+  }
+});
+
+// Get current user + payment methods
+app.get('/api/me', ensureAuth, async (req,res)=>{
+  try {
+    const userResult = await pool.query('SELECT id,email,name FROM users WHERE id=$1', [req.session.userId]);
+    const user = userResult.rows[0];
+    const pmResult = await pool.query('SELECT * FROM payment_methods WHERE user_id=$1', [user.id]);
+    res.json({ ok:true, user: { ...user, paymentMethods: pmResult.rows } });
+  } catch(err){ res.json({ ok:false, error: err.message }); }
+});
+
+// Add payment method (server-side demo)
+app.post('/api/payment_methods', ensureAuth, async (req,res)=>{
+  const { number, exp, cvc, cardholder } = req.body;
+  try {
+    // Create Stripe PaymentMethod (demo purposes only)
+    const pm = await stripe.paymentMethods.create({
+      type: 'card',
+      card: {
+        number,
+        exp_month: Number(exp.split('/')[0]),
+        exp_year: 2000 + Number(exp.split('/')[1]),
+        cvc
+      }
+    });
+
+    const result = await pool.query(
+      `INSERT INTO payment_methods (user_id, provider, provider_id, brand, last4, exp_month, exp_year)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [req.session.userId, 'stripe', pm.id, pm.card.brand, pm.card.last4, pm.card.exp_month, pm.card.exp_year]
+    );
+
+    res.json({ ok:true, paymentMethod: result.rows[0] });
+  } catch(err){ res.json({ ok:false, error: err.raw?err.raw.message:err.message }); }
+});
+
+// Transfer endpoint — charge sender card and credit recipient
+app.post('/api/transfer', ensureAuth, async (req,res)=>{
+  const { recipientEmail, amount, currency, paymentMethodId } = req.body;
+  try {
+    const senderResult = await pool.query('SELECT id,email FROM users WHERE id=$1', [req.session.userId]);
+    const sender = senderResult.rows[0];
+
+    const recipientResult = await pool.query('SELECT id,email FROM users WHERE email=$1', [recipientEmail]);
+    if(!recipientResult.rows[0]) return res.json({ ok:false, error:'recipient not found' });
+    const recipient = recipientResult.rows[0];
+
+    const pmResult = await pool.query('SELECT * FROM payment_methods WHERE id=$1 AND user_id=$2', [paymentMethodId, sender.id]);
+    const pm = pmResult.rows[0];
+    if(!pm) return res.json({ ok:false, error:'payment method not found' });
+
+    // Create Stripe PaymentIntent
+    const pi = await stripe.paymentIntents.create({
+      amount: Math.round(amount*100),
+      currency: (currency||'brl').toLowerCase(),
+      payment_method: pm.provider_id,
+      confirm: true,
+      off_session: true,
+      capture_method: 'automatic'
+    });
+
+    const txResult = await pool.query(
+      `INSERT INTO transactions (from_user, to_user, amount, currency, status, provider_details)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [sender.id, recipient.id, amount, currency, 'completed', { stripePaymentIntent: pi.id }]
+    );
+
+    res.json({ ok:true, transaction: txResult.rows[0] });
+
+  } catch(err){ res.json({ ok:false, error: err.raw?err.raw.message:err.message }); }
+});
+
+// Admin: list all transactions
+app.get('/api/admin/transactions', async (req,res)=>{
+  try {
+    const result = await pool.query(`
+      SELECT t.*, u_from.email AS from_email, u_to.email AS to_email
+      FROM transactions t
+      JOIN users u_from ON t.from_user=u_from.id
+      JOIN users u_to ON t.to_user=u_to.id
+      ORDER BY t.id DESC
+    `);
+    res.json({ ok:true, transactions: result.rows });
+  } catch(err){ res.json({ ok:false, error: err.message }); }
+});
+
+// Start server
+app.listen(process.env.PORT || 3000, ()=> console.log(`Server listening on ${process.env.PORT || 3000}`));
+

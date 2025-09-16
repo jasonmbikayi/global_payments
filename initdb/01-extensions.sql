@@ -1,0 +1,3 @@
+-- initdb/01-extensions.sql
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS citext;

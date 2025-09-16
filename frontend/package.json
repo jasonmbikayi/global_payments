@@ -1,0 +1,25 @@
+{
+  "name": "p2p-frontend",
+  "version": "1.0.0",
+  "description": "P2P payments frontend (React + Tailwind + Stripe)",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "axios": "^1.7.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
+    "vite": "^4.5.0"
+  },
+  "keywords": [],
+  "author": "Jason Mbikayi",
+  "license": "QUL"
+}

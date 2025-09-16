@@ -1,0 +1,67 @@
+#version: "3.9"
+
+services:
+  db:
+    image: postgres:17
+    container_name: p2p_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-p2papp}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-p2ppass}
+      POSTGRES_DB: ${POSTGRES_DB:-p2p_core}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d
+    ports:
+      - "5434:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-p2papp}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks:
+      - p2p-network
+
+  backend:
+    build: ./backend
+    container_name: p2p_backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-p2papp}:${POSTGRES_PASSWORD:-p2ppass}@db:5432/${POSTGRES_DB:-p2p_core}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-sk_test_xxx}
+      SESSION_SECRET: ${SESSION_SECRET:-devsecret}
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3001:3001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - p2p-network
+
+  frontend:
+    build: ./frontend
+    container_name: p2p_frontend
+    environment:
+      VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-pk_test_xxx}
+      VITE_BACKEND_URL: http://backend:3001
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
+    networks:
+      - p2p-network
+
+volumes:
+  db_data:
+
+networks:
+  p2p-network:
+    driver: bridge
