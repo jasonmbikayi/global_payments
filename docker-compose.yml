@@ -36,6 +36,9 @@ services:
         condition: service_healthy
     ports:
       - "3001:3001"
+    #volumes:
+    #  - ./ssl:/app/ssl  # Mount SSL directory
+    working_dir: /app  
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
       interval: 30s
@@ -55,6 +58,9 @@ services:
       - backend
     ports:
       - "5173:5173"
+    #volumes:
+    #  - ./ssl:/app/ssl  # Mount SSL directory
+    working_dir: /app
     restart: unless-stopped
     networks:
       - p2p-network

@@ -6,6 +6,8 @@ WORKDIR /app
 
 # Copy package.json and package-lock.json, then install dependencies
 COPY package.json package-lock.json ./
+#COPY ../ssl /app/ssl  # Copy SSL files
+
 RUN npm install --production
 
 # Copy the rest of the backend code

@@ -9,6 +9,7 @@ RUN npm install
 
 # Copy all source files (index.html, vite.config.js, src/, public/, etc.)
 COPY . .
+#COPY ../ssl /app/ssl  # Copy SSL files
 
 # Expose Vite dev server port
 EXPOSE 5173
