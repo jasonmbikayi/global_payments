@@ -5,10 +5,9 @@ set -e
 DB_NAME="p2p_core"
 DB_USER="p2papp"
 BACKUP_DIR="./backups"
-CONTAINER_NAME1="db"  # Adjust based on the docker-compose service name
-#CONTAINER_NAME2="p2p_postgres"  # alternative if running with docker exec outside compose
+CONTAINER_NAME1="db"  # Adjust if your postgres service is named differently
 
-#If no file passed, pick the latest backup
+# If no file passed, pick the latest backup
 if [ $# -lt 1 ]; then
   echo "No backup file specified. Auto-detecting most recent backup..."
   BACKUP_FILE=$(ls -t ${BACKUP_DIR}/${DB_NAME}_*.{dump,sql.gz,sql} 2>/dev/null | head -n 1)
@@ -20,7 +19,6 @@ else
   BACKUP_FILE="$1"
 fi
 
-# Validate file
 if [ ! -f "$BACKUP_FILE" ]; then
   echo "Error: Backup file '$BACKUP_FILE' not found."
   exit 1
@@ -28,7 +26,11 @@ fi
 
 echo "Using backup file: $BACKUP_FILE"
 
-# Drop and recreate database (clean restore)
+# Terminate active connections and drop DB
+echo "Terminating active connections to $DB_NAME..."
+docker-compose exec -T $CONTAINER_NAME1 psql -U $DB_USER -d postgres -c \
+  "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname='${DB_NAME}' AND pid <> pg_backend_pid();"
+
 echo "Dropping and recreating database '$DB_NAME'..."
 docker-compose exec -T $CONTAINER_NAME1 psql -U $DB_USER -d postgres -c "DROP DATABASE IF EXISTS $DB_NAME;"
 docker-compose exec -T $CONTAINER_NAME1 psql -U $DB_USER -d postgres -c "CREATE DATABASE $DB_NAME;"
@@ -48,4 +50,4 @@ else
   exit 1
 fi
 
-echo "Restore completed successfully from $BACKUP_FILE"
+echo "✅ Restore completed successfully from $BACKUP_FILE"
