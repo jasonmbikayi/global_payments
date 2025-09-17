@@ -8,7 +8,7 @@ BACKUP_DIR="./backups"
 CONTAINER_NAME1="db"  # Adjust based on the docker-compose service name
 #CONTAINER_NAME2="p2p_postgres"  # alternative if running with docker exec outside compose
 
-# If no file passed, pick the latest backup
+#If no file passed, pick the latest backup
 if [ $# -lt 1 ]; then
   echo "No backup file specified. Auto-detecting most recent backup..."
   BACKUP_FILE=$(ls -t ${BACKUP_DIR}/${DB_NAME}_*.{dump,sql.gz,sql} 2>/dev/null | head -n 1)
