@@ -200,19 +200,37 @@ function AppRoot() {
   const [user, setUser] = useState(null);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [refresh, setRefresh] = useState(false);
+  const [loadingUser, setLoadingUser] = useState(false);
+  const [userError, setUserError] = useState(null);
+  const [loadingPMs, setLoadingPMs] = useState(false);
+  const [pmError, setPmError] = useState(null);
 
   useEffect(() => {
     async function loadUser() {
+      setLoadingUser(true);
+      setUserError(null);
       try {
         const res = await api('/api/me');
         if (res.ok && res.user) {
           setUser(res.user);
-          const pmRes = await api('/api/payment_methods_list');
-          if (pmRes.ok) setPaymentMethods(pmRes.paymentMethods || []);
+          // Fetch payment methods
+          setLoadingPMs(true);
+          setPmError(null);
+          try {
+            const pmRes = await api('/api/payment_methods_list');
+            if (pmRes.ok) setPaymentMethods(pmRes.paymentMethods || []);
+            else setPmError(pmRes.error || 'Failed to load payment methods');
+          } catch (err) {
+            setPmError(err.message);
+          }
+          setLoadingPMs(false);
+        } else {
+          setUserError(res.error || 'Failed to load user');
         }
       } catch (err) {
-        console.error('Failed to load user:', err.message);
+        setUserError(err.message);
       }
+      setLoadingUser(false);
     }
     if (user) loadUser();
   }, [user, refresh]);
@@ -222,8 +240,12 @@ function AppRoot() {
       <h1 className="text-2xl font-bold mb-4">P2P Payments (Visa/Mastercard) — Demo</h1>
       <div className="grid grid-cols-2 gap-4">
         <div>
-          {!user && <RegisterForm onRegistered={u => setUser(u)} />}
+          {!user && !loadingUser && <RegisterForm onRegistered={u => setUser(u)} />}
+          {loadingUser && <div className="p-4 border rounded text-gray-600">Loading user...</div>}
+          {userError && <div className="p-4 border rounded text-red-600">{userError}</div>}
           {user && <div className="p-4 border rounded mb-4">Welcome, <b>{user.name}</b></div>}
+          {user && loadingPMs && <div className="p-4 border rounded text-gray-600">Loading payment methods...</div>}
+          {user && pmError && <div className="p-4 border rounded text-red-600">{pmError}</div>}
           {user && <AddCardForm onAdded={() => setRefresh(!refresh)} />}
         </div>
         <div>
