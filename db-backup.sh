@@ -4,9 +4,9 @@ set -e
 # Configuration
 DB_NAME="p2p_core"
 DB_USER="p2papp"
-BACKUP_DIR="./db-backups/backups"
-CONTAINER_NAME1="p2p_postgres"  # Adjust based on the docker-compose service name
-#CONTAINER_NAME2="p2p_postgresdb"  # if run from inside db container using <docker-compose exec> method
+BACKUP_DIR="./db-backups/"
+CONTAINER_NAME1="db"  # Adjust based on the docker-compose service name
+#CONTAINER_NAME2="p2p_postgres"  # if run from inside db container using <docker-compose exec> method
 DATE=$(date +%Y%m%d_%H%M%S)
 
 # Create backup directory if it doesn't exist
