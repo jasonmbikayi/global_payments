@@ -18,4 +18,3 @@ EXPOSE 3001
 
 # Start the server
 CMD ["node", "app.js"]
-

@@ -2,8 +2,8 @@
 response=$(curl -s --location 'http://0.0.0.0:3001/api/auth/login' \
 --header 'Content-Type: application/json' \
 --data '{
-    "email": "yv9@example.com",
-    "password": "password123"
+    "email": "alice@example.com",
+    "password": "alice123"
 }')
 
 # Extract token (assuming JSON response with token field)
