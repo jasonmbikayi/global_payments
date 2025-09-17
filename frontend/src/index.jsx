@@ -3,16 +3,35 @@ import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
 
-// Simple fetch wrapper
-function api(url, opts = {}) {
-  return fetch(url, {
+// ---------- Safe fetch wrapper ----------
+async function api(url, opts = {}) {
+  const res = await fetch(url, {
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     ...opts,
-  }).then(r => r.json());
+  });
+
+  const text = await res.text();
+  let data;
+  if (!text) data = {}; // empty response
+  else {
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      console.error('Invalid JSON response from', url, ':', text);
+      throw new Error('Invalid JSON response from server');
+    }
+  }
+
+  if (!res.ok) {
+    const errMsg = data?.error || `HTTP ${res.status}`;
+    throw new Error(errMsg);
+  }
+
+  return data;
 }
 
-// ----- RegisterForm -----
+// ---------- RegisterForm ----------
 function RegisterForm({ onRegistered }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -23,10 +42,15 @@ function RegisterForm({ onRegistered }) {
     e.preventDefault();
     setError(null);
     try {
-      const res = await api('/api/register', { method: 'POST', body: JSON.stringify({ email, password, name }) });
+      const res = await api('/api/register', {
+        method: 'POST',
+        body: JSON.stringify({ email, password, name })
+      });
       if (res.ok) onRegistered(res.user);
       else setError(res.error || 'Registration failed');
-    } catch (err) { setError(err.message); }
+    } catch (err) {
+      setError(err.message);
+    }
   }
 
   return (
@@ -41,7 +65,7 @@ function RegisterForm({ onRegistered }) {
   );
 }
 
-// ----- AddCardForm -----
+// ---------- AddCardForm ----------
 function AddCardForm({ onAdded }) {
   const [number, setNumber] = useState('');
   const [exp, setExp] = useState('');
@@ -53,13 +77,15 @@ function AddCardForm({ onAdded }) {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      const res = await api('/api/payment_methods', { method: 'POST', body: JSON.stringify({ number, exp, cvc }) });
-      if (res.ok) {
-        onAdded(res.paymentMethod);
-      } else {
-        setError(res.error || 'Failed to add card');
-      }
-    } catch (err) { setError(err.message); }
+      const res = await api('/api/payment_methods', {
+        method: 'POST',
+        body: JSON.stringify({ number, exp, cvc })
+      });
+      if (res.ok) onAdded(res.paymentMethod);
+      else setError(res.error || 'Failed to add card');
+    } catch (err) {
+      setError(err.message);
+    }
     setLoading(false);
   }
 
@@ -75,7 +101,7 @@ function AddCardForm({ onAdded }) {
   );
 }
 
-// ----- TransferForm -----
+// ---------- TransferForm ----------
 function TransferForm({ paymentMethods, onSent }) {
   const [recipientEmail, setRecipientEmail] = useState('');
   const [amount, setAmount] = useState('');
@@ -87,12 +113,20 @@ function TransferForm({ paymentMethods, onSent }) {
     e.preventDefault();
     setMessage(null);
     const payload = { recipientEmail, amount: Number(amount), currency, paymentMethodId };
-    const res = await api('/api/transfer', { method: 'POST', body: JSON.stringify(payload) });
-    if (res.ok) {
-      setMessage({ type: 'success', text: 'Transfer sent', tx: res.transaction });
-      if (onSent) onSent(res.transaction);
-    } else {
-      setMessage({ type: 'error', text: res.error || 'Transfer failed' });
+
+    try {
+      const res = await api('/api/transfer', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      if (res.ok) {
+        setMessage({ type: 'success', text: 'Transfer sent', tx: res.transaction });
+        if (onSent) onSent(res.transaction);
+      } else {
+        setMessage({ type: 'error', text: res.error || 'Transfer failed' });
+      }
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
     }
   }
 
@@ -120,14 +154,18 @@ function TransferForm({ paymentMethods, onSent }) {
   );
 }
 
-// ----- AdminDashboard -----
+// ---------- AdminDashboard ----------
 function AdminDashboard() {
   const [txs, setTxs] = useState([]);
 
   useEffect(() => {
     async function load() {
-      const res = await api('/api/admin/transactions');
-      if (res.ok) setTxs(res.transactions || []);
+      try {
+        const res = await api('/api/admin/transactions');
+        if (res.ok) setTxs(res.transactions || []);
+      } catch (err) {
+        console.error('Failed to load admin transactions:', err.message);
+      }
     }
     load();
   }, []);
@@ -136,7 +174,9 @@ function AdminDashboard() {
     <div className="p-4 border rounded">
       <h3 className="text-lg font-bold mb-2">Admin Dashboard</h3>
       <table className="w-full table-auto border-collapse">
-        <thead><tr><th>id</th><th>sender</th><th>recipient</th><th>amount</th><th>currency</th><th>status</th><th>provider</th></tr></thead>
+        <thead>
+          <tr><th>id</th><th>sender</th><th>recipient</th><th>amount</th><th>currency</th><th>status</th><th>provider</th></tr>
+        </thead>
         <tbody>
           {txs.map(tx => (
             <tr key={tx.id} className="border-t">
@@ -155,7 +195,7 @@ function AdminDashboard() {
   );
 }
 
-// ----- AppRoot -----
+// ---------- AppRoot ----------
 function AppRoot() {
   const [user, setUser] = useState(null);
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -163,12 +203,15 @@ function AppRoot() {
 
   useEffect(() => {
     async function loadUser() {
-      const res = await api('/api/me');
-      if (res.ok && res.user) {
-        setUser(res.user);
-        // Fetch payment methods for the user
-        const pmRes = await api('/api/payment_methods_list');
-        if (pmRes.ok) setPaymentMethods(pmRes.paymentMethods || []);
+      try {
+        const res = await api('/api/me');
+        if (res.ok && res.user) {
+          setUser(res.user);
+          const pmRes = await api('/api/payment_methods_list');
+          if (pmRes.ok) setPaymentMethods(pmRes.paymentMethods || []);
+        }
+      } catch (err) {
+        console.error('Failed to load user:', err.message);
       }
     }
     if (user) loadUser();
@@ -194,11 +237,10 @@ function AppRoot() {
   );
 }
 
-// Render app
+// ---------- Render App ----------
 const root = document.getElementById('root') || document.createElement('div');
 root.id = 'root';
-if(!document.body.contains(root)) document.body.appendChild(root);
+if (!document.body.contains(root)) document.body.appendChild(root);
 ReactDOM.createRoot(root).render(<AppRoot />);
 
 export default AppRoot;
-
