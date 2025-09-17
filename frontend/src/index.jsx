@@ -2,8 +2,8 @@
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import './index.css';
-// Simple fetch wrapper
 
+// Simple fetch wrapper
 function api(url, opts = {}) {
   return fetch(url, {
     headers: { 'Content-Type': 'application/json' },
@@ -42,8 +42,7 @@ function RegisterForm({ onRegistered }) {
 }
 
 // ----- AddCardForm -----
-function AddCardForm({ user, onAdded }) {
-  const [cardholder, setCardholder] = useState(user?.name || '');
+function AddCardForm({ onAdded }) {
   const [number, setNumber] = useState('');
   const [exp, setExp] = useState('');
   const [cvc, setCvc] = useState('');
@@ -54,7 +53,7 @@ function AddCardForm({ user, onAdded }) {
     e.preventDefault();
     setLoading(true); setError(null);
     try {
-      const res = await api('/api/payment_methods', { method: 'POST', body: JSON.stringify({ cardholder, number, exp, cvc }) });
+      const res = await api('/api/payment_methods', { method: 'POST', body: JSON.stringify({ number, exp, cvc }) });
       if (res.ok) {
         onAdded(res.paymentMethod);
       } else {
@@ -67,7 +66,6 @@ function AddCardForm({ user, onAdded }) {
   return (
     <form onSubmit={submit} className="p-4 border rounded">
       <h3 className="text-lg font-bold mb-2">Add Card</h3>
-      <input className="block w-full p-2 mb-2" value={cardholder} onChange={e => setCardholder(e.target.value)} placeholder="Cardholder name" />
       <input className="block w-full p-2 mb-2" value={number} onChange={e => setNumber(e.target.value)} placeholder="Card number (test)" />
       <input className="block w-full p-2 mb-2" value={exp} onChange={e => setExp(e.target.value)} placeholder="MM/YY" />
       <input className="block w-full p-2 mb-2" value={cvc} onChange={e => setCvc(e.target.value)} placeholder="CVC" />
@@ -78,21 +76,12 @@ function AddCardForm({ user, onAdded }) {
 }
 
 // ----- TransferForm -----
-function TransferForm({ user, onSent }) {
+function TransferForm({ paymentMethods, onSent }) {
   const [recipientEmail, setRecipientEmail] = useState('');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('BRL');
+  const [currency, setCurrency] = useState('usd');
   const [paymentMethodId, setPaymentMethodId] = useState('');
-  const [paymentMethods, setPaymentMethods] = useState([]);
   const [message, setMessage] = useState(null);
-
-  useEffect(() => {
-    async function loadPM() {
-      const res = await api('/api/me');
-      if (res.ok) setPaymentMethods(res.user.paymentMethods || []);
-    }
-    loadPM();
-  }, [user]);
 
   async function submit(e) {
     e.preventDefault();
@@ -114,9 +103,9 @@ function TransferForm({ user, onSent }) {
       <div className="flex gap-2 mb-2">
         <input className="flex-1 p-2" value={amount} onChange={e => setAmount(e.target.value)} placeholder="Amount" />
         <select className="p-2" value={currency} onChange={e => setCurrency(e.target.value)}>
-          <option>BRL</option>
-          <option>USD</option>
-          <option>EUR</option>
+          <option value="usd">USD</option>
+          <option value="eur">EUR</option>
+          <option value="brl">BRL</option>
         </select>
       </div>
       <select className="block w-full p-2 mb-2" value={paymentMethodId} onChange={e => setPaymentMethodId(e.target.value)}>
@@ -147,15 +136,17 @@ function AdminDashboard() {
     <div className="p-4 border rounded">
       <h3 className="text-lg font-bold mb-2">Admin Dashboard</h3>
       <table className="w-full table-auto border-collapse">
-        <thead><tr><th>id</th><th>from</th><th>to</th><th>amount</th><th>status</th></tr></thead>
+        <thead><tr><th>id</th><th>sender</th><th>recipient</th><th>amount</th><th>currency</th><th>status</th><th>provider</th></tr></thead>
         <tbody>
           {txs.map(tx => (
             <tr key={tx.id} className="border-t">
               <td>{tx.id}</td>
-              <td>{tx.from_email}</td>
-              <td>{tx.to_email}</td>
-              <td>{tx.amount} {tx.currency}</td>
+              <td>{tx.sender}</td>
+              <td>{tx.recipient}</td>
+              <td>{tx.amount}</td>
+              <td>{tx.currency}</td>
               <td>{tx.status}</td>
+              <td>{tx.provider}</td>
             </tr>
           ))}
         </tbody>
@@ -167,7 +158,21 @@ function AdminDashboard() {
 // ----- AppRoot -----
 function AppRoot() {
   const [user, setUser] = useState(null);
-  const [refresh, setRefresh] = useState(false); // trigger reload of payment methods
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [refresh, setRefresh] = useState(false);
+
+  useEffect(() => {
+    async function loadUser() {
+      const res = await api('/api/me');
+      if (res.ok && res.user) {
+        setUser(res.user);
+        // Fetch payment methods for the user
+        const pmRes = await api('/api/payment_methods_list');
+        if (pmRes.ok) setPaymentMethods(pmRes.paymentMethods || []);
+      }
+    }
+    if (user) loadUser();
+  }, [user, refresh]);
 
   return (
     <div className="p-6 max-w-4xl mx-auto">
@@ -176,10 +181,10 @@ function AppRoot() {
         <div>
           {!user && <RegisterForm onRegistered={u => setUser(u)} />}
           {user && <div className="p-4 border rounded mb-4">Welcome, <b>{user.name}</b></div>}
-          {user && <AddCardForm user={user} onAdded={pm => setRefresh(!refresh)} />}
+          {user && <AddCardForm onAdded={() => setRefresh(!refresh)} />}
         </div>
         <div>
-          {user ? <TransferForm key={refresh} user={user} onSent={tx => console.log(tx)} /> : <div className="p-4 border rounded">Please register to send money</div>}
+          {user ? <TransferForm paymentMethods={paymentMethods} onSent={tx => console.log(tx)} /> : <div className="p-4 border rounded">Please register to send money</div>}
           <div className="mt-4">
             <AdminDashboard />
           </div>

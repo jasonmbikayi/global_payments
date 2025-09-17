@@ -138,6 +138,22 @@ app.post('/api/payment_methods', ensureAuth, async (req, res) => {
   }
 });
 
+// ---------- List payment methods for current user ----------
+app.get('/api/payment_methods_list', ensureAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, provider, stripe_id, brand, last4, exp_month, exp_year
+       FROM payment_methods
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [req.session.userId]
+    );
+    res.json({ ok: true, paymentMethods: result.rows });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
 // ---------- trasnfer API ----------
 app.post('/api/transfer', ensureAuth, async (req, res) => {
   const { recipientEmail, amount, currency, paymentMethodId } = req.body;
