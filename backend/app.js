@@ -118,11 +118,12 @@ app.post('/api/payment_methods', ensureAuth, async (req, res) => {
 
     // Save in DB
     const result = await pool.query(
-      `INSERT INTO payment_methods (user_id, stripe_id, brand, last4, exp_month, exp_year)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, stripe_id, brand, last4, exp_month, exp_year`,
+      `INSERT INTO payment_methods (user_id, provider, stripe_id, brand, last4, exp_month, exp_year)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       RETURNING id, provider, stripe_id, brand, last4, exp_month, exp_year`,
       [
         req.session.userId,
+        'stripe',
         pm.id,
         pm.card.brand,
         pm.card.last4,
@@ -132,6 +133,22 @@ app.post('/api/payment_methods', ensureAuth, async (req, res) => {
     );
 
     res.json({ ok: true, paymentMethod: result.rows[0] });
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+// ---------- List payment methods for current user ----------
+app.get('/api/payment_methods_list', ensureAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, provider, stripe_id, brand, last4, exp_month, exp_year
+       FROM payment_methods
+       WHERE user_id = $1
+       ORDER BY created_at DESC`,
+      [req.session.userId]
+    );
+    res.json({ ok: true, paymentMethods: result.rows });
   } catch (err) {
     res.json({ ok: false, error: err.message });
   }
@@ -173,16 +190,18 @@ app.post('/api/transfer', ensureAuth, async (req, res) => {
 
     // Save transaction
     const tx = await pool.query(
-      `INSERT INTO transactions (sender_id, recipient_id, amount, currency, stripe_payment_intent, status)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       RETURNING id, sender_id, recipient_id, amount, currency, status, stripe_payment_intent`,
+      `INSERT INTO transactions (sender_id, kind, recipient_id, amount, currency, provider, provider_ref, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING id, sender_id, kind, recipient_id, amount, currency, provider, provider_ref, status`,
       [
         sender.rows[0].id,
+        'P2P_TRANSFER',
         recipient.rows[0].id,
-        amount,
-        currency || 'usd',
+        Math.round(amount * 100),
+        (currency || 'usd').toLowerCase(),
+        'stripe',
         pi.id,
-        'completed',
+        'SUCCEEDED',
       ]
     );
 
@@ -199,7 +218,7 @@ app.post('/api/transfer', ensureAuth, async (req, res) => {
 app.get('/api/admin/transactions', async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT t.id, u1.email as sender, u2.email as recipient, t.amount, t.currency, t.status, t.stripe_payment_intent
+      `SELECT t.id, u1.email as sender, u2.email as recipient, t.amount, t.currency, t.status, t.provider
        FROM transactions t
        JOIN users u1 ON t.sender_id = u1.id
        JOIN users u2 ON t.recipient_id = u2.id
@@ -215,4 +234,4 @@ app.get('/api/admin/transactions', async (req, res) => {
 app.listen(3001, () => console.log('This server up and is listening on port 3001'));
 module.exports = app; // for testing 
 // ---------- End ----------
-// 
+//
