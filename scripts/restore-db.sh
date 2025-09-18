@@ -4,7 +4,7 @@ set -e
 # Configuration
 DB_NAME="p2p_core"
 DB_USER="p2papp"
-BACKUP_DIR="./backups"
+BACKUP_DIR="../backups"
 CONTAINER_NAME1="db"  # Adjust if your postgres service is named differently
 
 # If no file passed, pick the latest backup
